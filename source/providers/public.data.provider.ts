@@ -38,13 +38,13 @@ export class PublicDataProvider {
         for (let table of tablesRaw) {
             const constraint = table.constraints!.find((constraint) => constraint.constraintType === 'PRIMARY KEY');
             result[table.tableName] = {
-                name: table.tableName,
+                tableName: table.tableName,
                 columns: table.columns!.map((column) => ({
                     defaultValue: column.columnDefault !== null ? column.columnDefault : undefined,
                     valueNullable: column.isNullable === 'YES',
                     valueType: column.dataType,
                     maximumLength: column.characterMaximumLength !== null ? column.characterMaximumLength : undefined,
-                    name: column.columnName,
+                    columnName: column.columnName,
                 })),
                 primaryKey: constraint ? constraint.usedColumns!.map((column) => column.columnName) : [],
             };
@@ -196,7 +196,6 @@ export class PublicDataProvider {
                 .join(', ');
 
             const data = await connection.query(`UPDATE public.${escapeIdentifier(tableName)} SET ${updateQuery} WHERE ${filterQuery ? filterQuery : 'true'} RETURNING *`) as any[];
-            console.info(JSON.stringify(data));
             switch (data.length) {
             case 0:
                 return null;
@@ -232,7 +231,6 @@ export class PublicDataProvider {
             const columnValues = values.map((column) => escapeValue(column.columnValue)).join(', ');
 
             const data = await connection.query(`INSERT INTO public.${escapeIdentifier(tableName)} (${columnNames}) VALUES (${columnValues}) RETURNING *`) as any[];
-            console.info(JSON.stringify(data));
             switch (data.length) {
             case 0:
                 return null;

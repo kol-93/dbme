@@ -9,7 +9,7 @@ export interface ISchemaColumn {
 }
 
 export interface ISchemaTable {
-    name: string;
+    tableName: string;
     columns: ISchemaColumn[];
     primaryKey: string[];
 }

@@ -3,7 +3,7 @@ import {ISchemaColumn, ISchemaTable} from '../../interfaces/public.data/schema.t
 
 export class SchemaTableDto implements ISchemaTable {
     @IsString()
-    name: string;
+    tableName: string;
 
     /// @todo IsArrayOf
     @IsArray()
