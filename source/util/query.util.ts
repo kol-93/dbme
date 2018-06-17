@@ -1,3 +1,5 @@
+import {ISchemaColumn} from '../interfaces/public.data/schema.table.interface';
+
 export function escapeIdentifier(str: string) {
     let escaped = '"';
     for (let i = 0; i < str.length; i++) {
@@ -62,3 +64,14 @@ export function escapeSet(columnName: string, columnValue: any): string {
     return `${escapeIdentifier(columnName)} = ${escapedValue}`;
 }
 
+export function defineColumn(columnDefinition: ISchemaColumn, isPrimary: boolean): string {
+    const {columnName, valueType, maximumLength, valueNullable, defaultValue} = columnDefinition;
+    const definition: string[] = [
+        escapeIdentifier(columnName),
+        valueType + (maximumLength !== undefined ? `(${maximumLength})` : ''),
+        valueNullable ? 'NULL' : 'NOT NULL',
+        isPrimary ? 'PRIMARY KEY' : '',
+        defaultValue !== undefined ? `DEFAULT ${escapeValue(defaultValue)}` : ''
+    ];
+    return definition.filter((value) => value !== '').join(' ');
+}

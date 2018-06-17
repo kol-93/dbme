@@ -2,10 +2,11 @@ import {BadRequestException, Injectable, InternalServerErrorException} from '@ne
 import {HttpException} from '@nestjs/common/exceptions/http.exception';
 import {ColumnFilterDto} from '../dto/public.data/column.filter.dto';
 import {OrderByDto} from '../dto/public.data/select.table.dto';
-import {IDatabaseSchema, ISchemaTable} from '../interfaces/public.data/schema.table.interface';
+import {DATA_TYPE} from '../enum/e.data.type';
+import {IDatabaseSchema, ISchemaColumn, ISchemaTable} from '../interfaces/public.data/schema.table.interface';
 import {SchemaTableEntity} from '../orm/entity/schema.table.entity';
 import {all, map} from '../util/func.util';
-import {escapeIdentifier, escapeLiteral, escapeSet, escapeValue, escapeWhere} from '../util/query.util';
+import {defineColumn, escapeIdentifier, escapeLiteral, escapeSet, escapeValue, escapeWhere} from '../util/query.util';
 import {ConnectionProvider} from './connection.provider';
 
 @Injectable()
@@ -244,4 +245,87 @@ export class PublicDataProvider {
         }
     }
 
+    public async createTable(this: PublicDataProvider, tableSchema: ISchemaTable): Promise<void> {
+        const databaseSchema = await this.schema;
+        const existingTableSchema = databaseSchema[tableSchema.tableName];
+        if (!existingTableSchema) {
+            const primaryKeyColumns = new Set(tableSchema.primaryKey);
+            const columns = tableSchema.columns
+                .map(
+                    (columnDefinition) =>
+                        defineColumn(columnDefinition, primaryKeyColumns.has(columnDefinition.columnName)),
+                );
+            await (
+                (await this.connectionProvider.connection)
+                    .query(`CREATE TABLE ${escapeIdentifier(tableSchema.tableName)} (${columns.join(', ')});`)
+            );
+        } else {
+            throw new BadRequestException(`Table ${escapeIdentifier(tableSchema.tableName)} is already exists`);
+        }
+    }
+
+    public async dropTable(this: PublicDataProvider, tableName: string): Promise<void> {
+        const databaseSchema = await this.schema;
+        const existingTableSchema = databaseSchema[tableName];
+        if (existingTableSchema) {
+            await (
+                (await this.connectionProvider.connection)
+                    .query(`DROP TABLE ${escapeIdentifier(tableName)};`)
+            );
+        } else {
+            throw new BadRequestException(`Table ${escapeIdentifier(tableName)} does not exist`);
+        }
+    }
+
+    public async alterTable(this: PublicDataProvider, tableName: string, dropColumns: string[], addColumns: ISchemaColumn[]): Promise<void> {
+        const databaseSchema = await this.schema;
+        const existingTableSchema = databaseSchema[tableName];
+        if (existingTableSchema) {
+            const primaryKeyColumns = new Set(existingTableSchema.primaryKey);
+            const existingColumns = new Set(existingTableSchema.columns.map((columnDefinition) => columnDefinition.columnName));
+
+            const actions: string[] = [];
+
+            actions.push(
+                ...dropColumns.map((columnName) => {
+                    if (primaryKeyColumns.has(columnName)) {
+                        throw new BadRequestException(`Can't drop primary key column ${escapeIdentifier(tableName)}.${escapeIdentifier(columnName)}`);
+                    }
+                    if (existingColumns.has(columnName)) {
+                        return `DROP COLUMN ${escapeIdentifier(columnName)}`;
+                    } else {
+                        throw new BadRequestException(`Column ${escapeIdentifier(tableName)}.${escapeIdentifier(columnName)} does not exist`);
+                    }
+                }),
+            );
+
+            actions.push(
+                ...addColumns.map((columnDefinition) => {
+                    if (!existingColumns.has(columnDefinition.columnName)) {
+                        if (columnDefinition.defaultValue === undefined) {
+                            switch (columnDefinition.valueType) {
+                            case DATA_TYPE.SERIAL:
+                            case DATA_TYPE.UUID:
+                                break;
+                            default:
+                                throw new BadRequestException(`Column ${escapeIdentifier(tableName)}.${escapeIdentifier(columnDefinition.columnName)} must be nullable or have default value`);
+                            }
+                        }
+                        return `ADD COLUMN ${defineColumn(columnDefinition, false)}`;
+                    } else {
+                        throw new BadRequestException(`Column ${escapeIdentifier(tableName)}.${escapeIdentifier(columnDefinition.columnName)} already exists`)
+                    }
+                }),
+            );
+
+            if (actions.length) {
+                await (
+                    (await this.connectionProvider.connection)
+                        .query(`ALTER TABLE ${escapeIdentifier(tableName)} ${actions.join(', ')};`)
+                );
+            }
+        } else {
+            throw new BadRequestException(`Table ${escapeIdentifier(tableName)} does not exist`);
+        }
+    }
 }
